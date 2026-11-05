@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kuchenverkauf: productos y rentabilidad</title>
+<style>
+:root{--bg:#faf6f1;--card:#fff;--tx:#2b2420;--mu:#7a6e66;--bd:#e6dccf;--ac:#c0562b;--ok:#2e7d4f;--wa:#b7791f;--no:#b83232;--okb:#e3f3e9;--wab:#faf0d6;--nob:#f8e1e1;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1916;--card:#282320;--tx:#f1e9e1;--mu:#a99d93;--bd:#3d352f;--ac:#e8845a;--ok:#6fcf97;--wa:#f2c35b;--no:#f08080;--okb:#1f3a2a;--wab:#403518;--nob:#472626}}
+:root[data-theme="dark"]{--bg:#1d1916;--card:#282320;--tx:#f1e9e1;--mu:#a99d93;--bd:#3d352f;--ac:#e8845a;--ok:#6fcf97;--wa:#f2c35b;--no:#f08080;--okb:#1f3a2a;--wab:#403518;--nob:#472626}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+main{max-width:1000px;margin:0 auto;padding:20px 14px 40px}
+h1{font-size:1.5rem;margin:0 0 4px}
+p.sub{color:var(--mu);margin:0 0 16px;font-size:.92rem}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+button,select{font:inherit;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:8px 12px;cursor:pointer}
+button.pri{background:var(--ac);color:#fff;border-color:var(--ac);font-weight:600}
+button.x{padding:4px 9px;color:var(--no)}
+label.th{display:flex;gap:6px;align-items:center;color:var(--mu);font-size:.9rem}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--bd);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:860px}
+th,td{padding:8px 8px;text-align:right;border-bottom:1px solid var(--bd);font-size:.9rem;white-space:nowrap}
+th{color:var(--mu);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
+th:first-child,td:first-child{text-align:left}
+input{font:inherit;width:78px;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);text-align:right}
+input.nm{width:170px;text-align:left}
+.tag{display:inline-block;padding:3px 10px;border-radius:99px;font-weight:600;font-size:.8rem}
+.ok{background:var(--okb);color:var(--ok)}.wa{background:var(--wab);color:var(--wa)}.no{background:var(--nob);color:var(--no)}
+.pos{color:var(--ok)}.neg{color:var(--no)}
+.tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+.tot div{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+.tot small{color:var(--mu);display:block;font-size:.75rem}.tot b{font-size:1.15rem}
+.note{color:var(--mu);font-size:.82rem;margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+<h1>Kuchenverkauf: productos y rentabilidad</h1>
+<p class="sub">Rellena cada producto con su precio, coste y lo que se vendió la última vez. La tabla calcula el beneficio y te dice si compensa repetirlo.</p>
+
+<div class="bar">
+  <button class="pri" id="add">+ Añadir producto</button>
+  <select id="sort" aria-label="Ordenar">
+    <option value="manual">Orden: manual</option>
+    <option value="name">Nombre (A–Z)</option>
+    <option value="profit">Mayor beneficio</option>
+    <option value="price">Mayor precio</option>
+    <option value="pct">Más vendido (%)</option>
+  </select>
+  <label class="th">Mínimo vendido para repetir <input id="th" type="number" min="0" max="100" value="70" style="width:60px">%</label>
+  <button id="clear">Vaciar</button>
+  <button class="pri" id="pdf" style="margin-left:auto">Crear PDF</button>
+</div>
+
+<div class="wrap">
+<table>
+<thead><tr>
+<th>Producto</th><th>Precio venta (€)</th><th>Coste por unidad (€)</th><th>Unidades hechas</th><th>Unidades vendidas</th>
+<th>Ingresos</th><th>Coste total</th><th>Beneficio</th><th>% vendido</th><th>¿Repetir?</th><th></th>
+</tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+
+<div class="tot" id="tot"></div>
+<p class="note">Criterio: <b>Sí</b> si hay beneficio y se vendió al menos el porcentaje mínimo; <b>Quizás</b> si hay beneficio pero se vendió poco (hacer menos cantidad); <b>No</b> si no hay beneficio.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+const KEY="kuchenverkauf-v1";
+let rows=[],th=70,sortMode="manual";
+const $=s=>document.querySelector(s);
+const eur=n=>n.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+const eurP=n=>n.toLocaleString("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2})+" EUR";
+const uid=()=>Math.random().toString(36).slice(2,9);
+const demo=()=>[
+ {id:uid(),name:"Tarta de manzana",price:3,cost:1.2,made:20,sold:18},
+ {id:uid(),name:"Brownies",price:2,cost:0.9,made:30,sold:30},
+ {id:uid(),name:"Tarta de queso",price:3.5,cost:2.4,made:15,sold:6}
+];
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&Array.isArray(s.rows)){rows=s.rows;th=s.th??70;return}}catch(e){}rows=demo()}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({rows,th}))}catch(e){}}
+function calc(r){
+ const p=+r.price||0,c=+r.cost||0,m=+r.made||0,s=+r.sold||0;
+ const rev=p*s,cost=c*m,profit=rev-cost,pct=m>0?s/m*100:0;
+ let v="no",t="No";
+ if(profit>0){if(pct>=th){v="ok";t="Sí"}else{v="wa";t="Quizás"}}
+ return{rev,cost,profit,pct,v,t};
+}
+function sorted(){
+ const a=rows.slice();
+ if(sortMode==="name")a.sort((x,y)=>x.name.localeCompare(y.name,"es"));
+ if(sortMode==="profit")a.sort((x,y)=>calc(y).profit-calc(x).profit);
+ if(sortMode==="price")a.sort((x,y)=>(+y.price||0)-(+x.price||0));
+ if(sortMode==="pct")a.sort((x,y)=>calc(y).pct-calc(x).pct);
+ return a;
+}
+function render(){
+ const tb=$("#rows");tb.innerHTML="";
+ sorted().forEach(r=>{
+  const tr=document.createElement("tr");tr.dataset.id=r.id;
+  tr.innerHTML=`<td><input class="nm" data-f="name" placeholder="Producto"></td>
+  <td><input data-f="price" type="number" step="0.05" min="0"></td>
+  <td><input data-f="cost" type="number" step="0.05" min="0"></td>
+  <td><input data-f="made" type="number" step="1" min="0"></td>
+  <td><input data-f="sold" type="number" step="1" min="0"></td>
+  <td class="rev"></td><td class="cst"></td><td class="prf"></td><td class="pct"></td><td class="vd"></td>
+  <td><button class="x" title="Eliminar">✕</button></td>`;
+  tr.querySelectorAll("input").forEach(i=>{i.value=r[i.dataset.f]??"";
+   i.addEventListener("input",()=>{r[i.dataset.f]=i.dataset.f==="name"?i.value:i.value===""?"":+i.value;upd(tr,r);totals();save()})});
+  tr.querySelector(".x").onclick=()=>{rows=rows.filter(x=>x.id!==r.id);render();save()};
+  upd(tr,r);tb.appendChild(tr);
+ });
+ totals();
+}
+function upd(tr,r){
+ const c=calc(r);
+ tr.querySelector(".rev").textContent=eur(c.rev);
+ tr.querySelector(".cst").textContent=eur(c.cost);
+ const p=tr.querySelector(".prf");p.textContent=eur(c.profit);p.className="prf "+(c.profit>=0?"pos":"neg");
+ tr.querySelector(".pct").textContent=Math.round(c.pct)+" %";
+ tr.querySelector(".vd").innerHTML=`<span class="tag ${c.v}">${c.t}</span>`;
+}
+function totals(){
+ let rev=0,cost=0;rows.forEach(r=>{const c=calc(r);rev+=c.rev;cost+=c.cost});
+ const pr=rev-cost;
+ $("#tot").innerHTML=`<div><small>Ingresos totales</small><b>${eur(rev)}</b></div><div><small>Coste total</small><b>${eur(cost)}</b></div><div><small>Beneficio total</small><b class="${pr>=0?"pos":"neg"}">${eur(pr)}</b></div><div><small>Productos</small><b>${rows.length}</b></div>`;
+}
+$("#add").onclick=()=>{rows.push({id:uid(),name:"",price:"",cost:"",made:"",sold:""});render();save();const i=document.querySelectorAll("input.nm");i[i.length-1]?.focus()};
+$("#clear").onclick=()=>{if(confirm("¿Vaciar todos los productos?")){rows=[];render();save()}};
+$("#sort").onchange=e=>{sortMode=e.target.value;render()};
+$("#th").oninput=e=>{th=+e.target.value||0;render();save()};
+$("#pdf").onclick=async()=>{
+ const J=window.jspdf&&window.jspdf.jsPDF;
+ if(!J){alert("No se pudo cargar el generador de PDF.");return}
+ const d=new J({orientation:"landscape"});
+ const fecha=new Date().toLocaleDateString("es-ES");
+ d.setFontSize(16);d.text("Kuchenverkauf: productos y rentabilidad",14,16);
+ d.setFontSize(10);d.text("Fecha: "+fecha+"   |   Criterio: repetir si se vendió al menos el "+th+" %",14,23);
+ const list=sorted();let rev=0,cost=0;
+ const body=list.map(r=>{const c=calc(r);rev+=c.rev;cost+=c.cost;
+  return[r.name||"-",eurP(+r.price||0),eurP(+r.cost||0),r.made||0,r.sold||0,eurP(c.rev),eurP(c.cost),eurP(c.profit),Math.round(c.pct)+" %",c.t]});
+ body.push(["TOTAL","","","","",eurP(rev),eurP(cost),eurP(rev-cost),"",""]);
+ d.autoTable({startY:28,head:[["Producto","Precio","Coste/ud.","Hechas","Vendidas","Ingresos","Coste total","Beneficio","% vendido","¿Repetir?"]],body,
+  styles:{fontSize:9},headStyles:{fillColor:[192,86,43]},
+  didParseCell:h=>{if(h.section==="body"){if(h.row.index===body.length-1)h.cell.styles.fontStyle="bold";
+   if(h.column.index===9){const t=h.cell.raw;h.cell.styles.fontStyle="bold";h.cell.styles.textColor=t==="Sí"?[46,125,79]:t==="Quizás"?[183,121,31]:[184,50,50]}}}});
+ d.save("kuchenverkauf.pdf");
+};
+load();$("#th").value=th;render();
+</script>
+</body>
+</html>
